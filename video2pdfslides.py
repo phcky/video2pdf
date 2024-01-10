@@ -4,6 +4,7 @@ import cv2
 import imutils
 import shutil
 import img2pdf
+import argparse
 import glob
 import pathlib
 from PIL import Image
@@ -216,7 +217,11 @@ def remove_duplicate_images(image_paths):
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir_name = './input'  # The folder in which the video to convert is located
+    parser = argparse.ArgumentParser("video_path")
+    parser.add_argument("video_path", help="path of video to be converted to pdf slides", type=str)
+    args = parser.parse_args()
+    input_dir_name = args.video_path # The folder in which the video to convert is located
+    # input_dir_name = './input' #Set the folder location in code
     for file_name in os.listdir(input_dir_name):
         # Check if the file is an .mp4 file
         if file_name.lower().endswith('.mp4'):
