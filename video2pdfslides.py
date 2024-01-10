@@ -12,25 +12,23 @@ from PIL import Image
 
 OUTPUT_SLIDES_DIR = f"./output"
 
-FRAME_RATE = 1                   # no.of frames per second that needs to be processed, fewer the count faster the speed
-WARMUP = FRAME_RATE              # initial number of frames to be skipped
-FGBG_HISTORY = FRAME_RATE * 15   # no.of frames in background object
-VAR_THRESHOLD = 16               # Threshold on the squared Mahalanobis distance between the pixel and the model to decide whether a pixel is well described by the background model.
-DETECT_SHADOWS = False            # If true, the algorithm will detect shadows and mark them.
-MIN_PERCENT = 0.1                # min % of diff between foreground and background to detect if motion has stopped
-MAX_PERCENT = 10                  # max % of diff between foreground and background to detect if frame is still in motion
+FRAME_RATE = 1  # no.of frames per second that needs to be processed, fewer the count faster the speed
+WARMUP = FRAME_RATE  # initial number of frames to be skipped
+FGBG_HISTORY = FRAME_RATE * 15  # no.of frames in background object
+VAR_THRESHOLD = 16  # Threshold on the squared Mahalanobis distance between the pixel and the model to decide whether a pixel is well described by the background model.
+DETECT_SHADOWS = False  # If true, the algorithm will detect shadows and mark them.
+MIN_PERCENT = 0.1  # min % of diff between foreground and background to detect if motion has stopped
+MAX_PERCENT = 10  # max % of diff between foreground and background to detect if frame is still in motion
 
 
 def get_frames(video_path):
     '''A fucntion to return the frames from a video located at video_path
     this function skips frames as defined in FRAME_RATE'''
-    
-    
+
     # open a pointer to the video file initialize the width and height of the frame
     vs = cv2.VideoCapture(video_path)
     if not vs.isOpened():
         raise Exception(f'unable to open file {video_path}')
-
 
     total_frames = vs.get(cv2.CAP_PROP_FRAME_COUNT)
     frame_time = 0
@@ -42,8 +40,8 @@ def get_frames(video_path):
     while True:
         # grab a frame from the video
 
-        vs.set(cv2.CAP_PROP_POS_MSEC, frame_time * 1000)    # move frame to a timestamp
-        frame_time += 1/FRAME_RATE
+        vs.set(cv2.CAP_PROP_POS_MSEC, frame_time * 1000)  # move frame to a timestamp
+        frame_time += 1 / FRAME_RATE
 
         (_, frame) = vs.read()
         # if the frame is None, then we have reached the end of the video file
@@ -54,7 +52,7 @@ def get_frames(video_path):
         yield frame_count, frame_time, frame
 
     vs.release()
- 
+
 
 def detect_unique_screenshots(video_path, output_folder_screenshot_path):
     ''''''
@@ -63,7 +61,8 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path):
     # varThreshold = Threshold on the squared Mahalanobis distance between the pixel and the model to decide whether a pixel is well described by the background model. This parameter does not affect the background update.
     # detectShadows = If true, the algorithm will detect shadows and mark them. It decreases the speed a bit, so if you do not need this feature, set the parameter to false.
 
-    fgbg = cv2.createBackgroundSubtractorMOG2(history=FGBG_HISTORY, varThreshold=VAR_THRESHOLD,detectShadows=DETECT_SHADOWS)
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=FGBG_HISTORY, varThreshold=VAR_THRESHOLD,
+                                              detectShadows=DETECT_SHADOWS)
 
     captured = False
     start_time = time.time()
@@ -71,13 +70,13 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path):
 
     screenshoots_count = 0
     for frame_count, frame_time, frame in get_frames(video_path):
-        orig = frame.copy() # clone the original frame (so we can save it later), 
-        frame = imutils.resize(frame, width=600) # resize the frame
-        mask = fgbg.apply(frame) # apply the background subtractor
+        orig = frame.copy()  # clone the original frame (so we can save it later),
+        frame = imutils.resize(frame, width=600)  # resize the frame
+        mask = fgbg.apply(frame)  # apply the background subtractor
 
         # apply a series of erosions and dilations to eliminate noise
-#            eroded_mask = cv2.erode(mask, None, iterations=2)
-#            mask = cv2.dilate(mask, None, iterations=2)
+        #            eroded_mask = cv2.erode(mask, None, iterations=2)
+        #            mask = cv2.dilate(mask, None, iterations=2)
 
         # if the width and height are empty, grab the spatial dimensions
         if W is None or H is None:
@@ -90,7 +89,7 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path):
 
         if p_diff < MIN_PERCENT and not captured and frame_count > WARMUP:
             captured = True
-            filename = f"{screenshoots_count:03}_{round(frame_time/60, 2)}.png"
+            filename = f"{screenshoots_count:03}_{round(frame_time / 60, 2)}.png"
 
             path = os.path.join(output_folder_screenshot_path, filename)
             print("saving {}".format(path))
@@ -103,8 +102,8 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path):
         elif captured and p_diff >= MAX_PERCENT:
             captured = False
     print(f'{screenshoots_count} screenshots Captured!')
-    print(f'Time taken {time.time()-start_time}s')
-    return 
+    print(f'Time taken {time.time() - start_time}s')
+    return
 
 
 def initialize_output_folder(video_path):
@@ -163,7 +162,7 @@ def compress_img(image_name, new_size_ratio=0.8, quality=95, width=None, height=
     new_image_size = os.path.getsize(new_filename)
     print(" [+] Size after compression:", get_size_format(new_image_size))
     saving_diff = new_image_size - image_size
-    print(f" [+] Image size change: {saving_diff/image_size*100:.2f}% of the original image size.")
+    print(f" [+] Image size change: {saving_diff / image_size * 100:.2f}% of the original image size.")
 
 
 def calculate_image_similarity(image1_path, image2_path):
@@ -203,7 +202,7 @@ def remove_duplicate_images(image_paths):
     for idx, img_path in enumerate(image_paths):
         if idx > 0:
             similarity = calculate_image_similarity(prev_image, img_path)
-            #print (prev_image, "and", img_path, "similarity is:", similarity)
+            # print (prev_image, "and", img_path, "similarity is:", similarity)
             if similarity > 0.45:
                 os.remove(img_path)
                 print(f"Removed duplicate image: {img_path}")
@@ -217,14 +216,16 @@ def remove_duplicate_images(image_paths):
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir_name = './Test4'#要转换的视频所在的文件夹
+    input_dir_name = './input'  # The folder in which the video to convert is located
     for file_name in os.listdir(input_dir_name):
-        print(f"正在转换：{file_name}")
-        video_path = str(pathlib.Path(input_dir_name, file_name))
-        output_folder_screenshot_path = initialize_output_folder(video_path)
-        detect_unique_screenshots(video_path, output_folder_screenshot_path)
-        image_paths = glob.glob(f"{output_folder_screenshot_path}/*.png")
-        image_paths = [x.replace('\\', '/') for x in image_paths]
-        remove_duplicate_images(image_paths)
-        # 提取的图片转换为pdf
-        convert_screenshots_to_pdf(output_folder_screenshot_path)
+        # Check if the file is an .mp4 file
+        if file_name.lower().endswith('.mp4'):
+            print(f"正在转换：{file_name}")
+            video_path = str(pathlib.Path(input_dir_name, file_name))
+            output_folder_screenshot_path = initialize_output_folder(video_path)
+            detect_unique_screenshots(video_path, output_folder_screenshot_path)
+            image_paths = glob.glob(f"{output_folder_screenshot_path}/*.png")
+            image_paths = [x.replace('\\', '/') for x in image_paths]
+            remove_duplicate_images(image_paths)
+            # Convert extracted images to PDF
+            convert_screenshots_to_pdf(output_folder_screenshot_path)
