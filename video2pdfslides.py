@@ -5,19 +5,20 @@ import imutils
 import shutil
 import img2pdf
 import glob
-import argparse
+import pathlib
+from PIL import Image
 
 ############# Define constants
 
 OUTPUT_SLIDES_DIR = f"./output"
 
-FRAME_RATE = 3                   # no.of frames per second that needs to be processed, fewer the count faster the speed
+FRAME_RATE = 1                   # no.of frames per second that needs to be processed, fewer the count faster the speed
 WARMUP = FRAME_RATE              # initial number of frames to be skipped
 FGBG_HISTORY = FRAME_RATE * 15   # no.of frames in background object
 VAR_THRESHOLD = 16               # Threshold on the squared Mahalanobis distance between the pixel and the model to decide whether a pixel is well described by the background model.
 DETECT_SHADOWS = False            # If true, the algorithm will detect shadows and mark them.
 MIN_PERCENT = 0.1                # min % of diff between foreground and background to detect if motion has stopped
-MAX_PERCENT = 3                  # max % of diff between foreground and background to detect if frame is still in motion
+MAX_PERCENT = 10                  # max % of diff between foreground and background to detect if frame is still in motion
 
 
 def get_frames(video_path):
@@ -55,7 +56,6 @@ def get_frames(video_path):
     vs.release()
  
 
-
 def detect_unique_screenshots(video_path, output_folder_screenshot_path):
     ''''''
     # Initialize fgbg a Background object with Parameters
@@ -65,7 +65,6 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path):
 
     fgbg = cv2.createBackgroundSubtractorMOG2(history=FGBG_HISTORY, varThreshold=VAR_THRESHOLD,detectShadows=DETECT_SHADOWS)
 
-    
     captured = False
     start_time = time.time()
     (W, H) = (None, None)
@@ -126,35 +125,106 @@ def convert_screenshots_to_pdf(output_folder_screenshot_path):
     print('output_pdf_path', output_pdf_path)
     print('converting images to pdf..')
     with open(output_pdf_path, "wb") as f:
-        f.write(img2pdf.convert(sorted(glob.glob(f"{output_folder_screenshot_path}/*.png"))))
+        f.write(img2pdf.convert(sorted(glob.glob(f"{output_folder_screenshot_path}/*.jpg"))))
     print('Pdf Created!')
     print('pdf saved at', output_pdf_path)
 
 
+def get_size_format(b, factor=1024, suffix="B"):
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
+        if b < factor:
+            return f"{b:.2f}{unit}{suffix}"
+        b /= factor
+    return f"{b:.2f}Y{suffix}"
+
+
+def compress_img(image_name, new_size_ratio=0.8, quality=95, width=None, height=None, to_jpg=True):
+    img = Image.open(image_name)
+    print(" [*] Image shape:", img.size)
+    image_size = os.path.getsize(image_name)
+    print(" [*] Size before compression:", get_size_format(image_size))
+    if new_size_ratio < 1.0:
+        img = img.resize((int(img.size[0] * new_size_ratio), int(img.size[1] * new_size_ratio)), Image.LANCZOS)
+        print(" [+] New Image shape:", img.size)
+    elif width and height:
+        img = img.resize((width, height), Image.LANCZOS)
+        print(" [+] New Image shape:", img.size)
+    filename, ext = os.path.splitext(image_name)
+    if to_jpg:
+        new_filename = f"{filename}_compressed.jpg"
+    else:
+        new_filename = f"{filename}_compressed{ext}"
+    try:
+        img.save(new_filename, quality=quality, optimize=True)
+    except OSError:
+        img = img.convert("RGB")
+        img.save(new_filename, quality=quality, optimize=True)
+    print(" [+] New file saved:", new_filename)
+    new_image_size = os.path.getsize(new_filename)
+    print(" [+] Size after compression:", get_size_format(new_image_size))
+    saving_diff = new_image_size - image_size
+    print(f" [+] Image size change: {saving_diff/image_size*100:.2f}% of the original image size.")
+
+
+def calculate_image_similarity(image1_path, image2_path):
+    # Read images
+    image1 = cv2.imread(image1_path, cv2.IMREAD_GRAYSCALE)
+    image2 = cv2.imread(image2_path, cv2.IMREAD_GRAYSCALE)
+
+    # Initialize SIFT detector
+    sift = cv2.SIFT_create()
+
+    # Find key points and descriptors with SIFT
+    key_points1, descriptors1 = sift.detectAndCompute(image1, None)
+    key_points2, descriptors2 = sift.detectAndCompute(image2, None)
+
+    # FLANN parameters for feature matching
+    flann_index_params = dict(algorithm=0, trees=5)
+    search_params = dict(checks=50)
+
+    # Use FLANN to perform feature matching
+    flann = cv2.FlannBasedMatcher(flann_index_params, search_params)
+    matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+
+    # Ratio test for good matches
+    good_matches = []
+    for m, n in matches:
+        if m.distance < 0.7 * n.distance:
+            good_matches.append(m)
+
+    # Calculate similarity based on the number of good matches
+    similarity = len(good_matches) / len(key_points1)
+
+    return similarity
+
+
+def remove_duplicate_images(image_paths):
+    prev_image = None
+    for idx, img_path in enumerate(image_paths):
+        if idx > 0:
+            similarity = calculate_image_similarity(prev_image, img_path)
+            #print (prev_image, "and", img_path, "similarity is:", similarity)
+            if similarity > 0.45:
+                os.remove(img_path)
+                print(f"Removed duplicate image: {img_path}")
+                continue
+            compress_img(prev_image)
+            os.remove(prev_image)
+        prev_image = img_path
+    compress_img(image_paths[-1])
+    os.remove(image_paths[-1])
+
+
 if __name__ == "__main__":
-    
-#     video_path = "./input/Test Video 2.mp4"
-#     choice = 'y'
-#     output_folder_screenshot_path = initialize_output_folder(video_path)
-    
-    
-    parser = argparse.ArgumentParser("video_path")
-    parser.add_argument("video_path", help="path of video to be converted to pdf slides", type=str)
-    args = parser.parse_args()
-    video_path = args.video_path
-
-    print('video_path', video_path)
-    output_folder_screenshot_path = initialize_output_folder(video_path)
-    detect_unique_screenshots(video_path, output_folder_screenshot_path)
-
-    print('Please Manually verify screenshots and delete duplicates')
-    while True:
-        choice = input("Press y to continue and n to terminate")
-        choice = choice.lower().strip()
-        if choice in ['y', 'n']:
-            break
-        else:
-            print('please enter a valid choice')
-
-    if choice == 'y':
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_dir_name = './Test4'#要转换的视频所在的文件夹
+    for file_name in os.listdir(input_dir_name):
+        print(f"正在转换：{file_name}")
+        video_path = str(pathlib.Path(input_dir_name, file_name))
+        output_folder_screenshot_path = initialize_output_folder(video_path)
+        detect_unique_screenshots(video_path, output_folder_screenshot_path)
+        image_paths = glob.glob(f"{output_folder_screenshot_path}/*.png")
+        image_paths = [x.replace('\\', '/') for x in image_paths]
+        remove_duplicate_images(image_paths)
+        # 提取的图片转换为pdf
         convert_screenshots_to_pdf(output_folder_screenshot_path)
